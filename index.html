@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>FWSWeb Tactical HUD</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #ff0000;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100vh;
+            text-shadow: 0 0 5px #ff0000;
+        }
+        
+        /* ВІДЕО З КАМЕРИ */
+        #camera-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+            filter: grayscale(100%) sepia(100%) hue-rotate(300deg) saturate(1000%) brightness(0.5) contrast(1.5);
+            display: none;
+        }
+
+        /* ЦИФРОВИЙ ШУМ */
+        .noise-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+            opacity: 0.2;
+            z-index: 2;
+            pointer-events: none;
+            mix-blend-mode: multiply;
+        }
+
+        /* ЛІНІЯ СКАНУВАННЯ */
+        .scanline {
+            width: 100%;
+            height: 4px;
+            background-color: rgba(255, 0, 0, 0.8);
+            position: absolute;
+            top: 0;
+            left: 0;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 1);
+            animation: scan 4s linear infinite;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        @keyframes scan {
+            0% { top: -10%; }
+            100% { top: 110%; }
+        }
+
+        /* ТАКТИЧНА КНОПКА КАМЕРИ */
+        #optics-toggle {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            padding: 10px 15px;
+            border: 1px solid #ff0000;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ff0000;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            font-size: 1.2rem;
+            cursor: pointer;
+            z-index: 50;
+            display: none;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+            text-transform: uppercase;
+            min-width: 240px;
+            text-align: left;
+        }
+
+        /* МАЛЕНЬКА КНОПКА ВИХОДУ - ПЕРЕНЕСЕНО ВНИЗ */
+        #exit-btn {
+            position: absolute;
+            bottom: 20px; /* Тепер знизу */
+            left: 20px;
+            padding: 5px 10px;
+            border: 1px solid #ff0000;
+            background: rgba(0, 0, 0, 0.7);
+            color: #ff0000;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            font-size: 0.9rem;
+            cursor: pointer;
+            z-index: 50;
+            display: none;
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.3);
+            text-transform: uppercase;
+        }
+
+        #optics-toggle:active, #exit-btn:active {
+            background: rgba(255, 0, 0, 0.3);
+        }
+
+        /* КОНТЕЙНЕР ДЛЯ ТЕКСТУ */
+        .container {
+            padding: 25px;
+            z-index: 20;
+            position: relative;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid rgba(255, 0, 0, 0.5);
+            margin: 20px;
+            min-height: 180px;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.2);
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            border-bottom: 2px solid #ff0000;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+
+        p {
+            font-size: 1.4rem;
+            line-height: 1.5;
+            font-weight: bold;
+        }
+
+        /* МИГОТЛИВА КАРЕТКА */
+        .caret {
+            display: inline-block;
+            width: 12px;
+            height: 1.2em;
+            background-color: currentColor;
+            vertical-align: text-bottom;
+            animation: blink 1s step-end infinite;
+            margin-left: 5px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* КНОПКА СТАРТУ */
+        #start-btn {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 20px;
+            background-color: rgba(0, 0, 0, 0.9);
+            color: #ff0000;
+            border: 2px solid #ff0000;
+            cursor: pointer;
+            z-index: 100;
+            font-family: 'Courier New', Courier, monospace;
+            font-weight: bold;
+            text-align: center;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <button id="start-btn">[ INITIATE FWS_WEB ]</button>
+    <button id="exit-btn">[ EXIT ]</button>
+    <button id="optics-toggle"></button>
+
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <div class="noise-overlay"></div>
+    <div class="scanline"></div>
+    
+    <div class="container" id="content" style="display: none;">
+        <h1 id="title"></h1>
+        <p id="desc"></p>
+    </div>
+
+    <script>
+        const slides = [
+            { title: "FWSWEB PROJECT", desc: "Геоінформаційна система для управління пожежним водопостачанням." },
+            { title: "CORE ARCHITECTURE", desc: "Laravel Backend / FastAPI AI / PostgreSQL PostGIS / Leaflet.js." },
+            { title: "PHP COMPATIBILITY", desc: "Підтримка legacy-середовищ PHP 5.6 із повною сумісністю для PHP 8.1+." },
+            { title: "DATABASE STRUCTURE", desc: "База fwsWeb_db. Об'єднана таблиця історії (Status, Repair, Use)." },
+            { title: "DATA STANDARDS", desc: "Базовий стан поля Real_Functional за замовчуванням: 'Невідомо'." },
+            { title: "AI WATCHDOG", desc: "Автоматичне виявлення аномалій та перевірка цілісності даних у БД." },
+            { title: "KARMA ENGINE", desc: "Модель довіри: вага правок базується на репутації користувача." },
+            { title: "ACCESS LEVELS", desc: "Чіткий розподіл ролей: SuperAdmin, Admin, Operator та User." },
+            { title: "TACTICAL AR", desc: "AR-інтерфейс: пошук Об'єктів ППВ крізь перешкоди з низькою затримкою." },
+            { title: "OPEN SOURCE", desc: "Відкрита ліцензія з обов'язковою взаємністю для похідних розробок." },
+            { title: "ROADMAP", desc: "IoT-датчики тиску, Lidar-сканування та національна масштабованість." }
+        ];
+
+        let currentSlide = 0;
+        let slideTimeout = null;
+        let cameraStream = null;
+        let isOpticsTransitioning = false;
+        let audioCtx = null;
+        
+        const titleEl = document.getElementById('title');
+        const descEl = document.getElementById('desc');
+        const startBtn = document.getElementById('start-btn');
+        const exitBtn = document.getElementById('exit-btn');
+        const opticsBtn = document.getElementById('optics-toggle');
+        const contentDiv = document.getElementById('content');
+        const videoEl = document.getElementById('camera-feed');
+
+        // Ініціалізація звуку безпосередньо по кліку (обхід блокування Android)
+        function initAndPlaySound() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = 45; 
+            gainNode.gain.value = 0.6;
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.start();
+        }
+
+        function typeWriter(text, element, speed, callback) {
+            if (element.typeTimeout) clearTimeout(element.typeTimeout);
+            
+            element.innerHTML = '<span class="caret"></span>';
+            let i = 0;
+            
+            function type() {
+                if (i < text.length) {
+                    element.innerHTML = text.substring(0, i + 1) + '<span class="caret"></span>';
+                    i++;
+                    element.typeTimeout = setTimeout(type, speed);
+                } else {
+                    element.innerHTML = text + '<span class="caret"></span>';
+                    if (callback) callback();
+                }
+            }
+            type();
+        }
+
+        function playSlide() {
+            if (currentSlide >= slides.length) currentSlide = 0; 
+            
+            const slide = slides[currentSlide];
+            titleEl.innerHTML = '';
+            descEl.innerHTML = '';
+            
+            typeWriter(slide.title, titleEl, 40, () => {
+                typeWriter(slide.desc, descEl, 30, () => {
+                    slideTimeout = setTimeout(() => {
+                        currentSlide++;
+                        playSlide();
+                    }, 5000);
+                });
+            });
+        }
+
+        // КЕРУВАННЯ КАМЕРОЮ
+        opticsBtn.addEventListener('click', async () => {
+            if (isOpticsTransitioning) return; 
+            isOpticsTransitioning = true;
+
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+                videoEl.srcObject = null;
+                videoEl.style.display = 'none';
+                
+                opticsBtn.style.color = "#ff0000";
+                opticsBtn.style.borderColor = "#ff0000";
+                typeWriter("[ OPTICS : OFF ]", opticsBtn, 30, () => {
+                    isOpticsTransitioning = false;
+                });
+            } else {
+                opticsBtn.style.color = "#ff0000";
+                opticsBtn.style.borderColor = "#ff0000";
+                
+                typeWriter("[ CONNECTING... ]", opticsBtn, 30, async () => {
+                    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                        alert("Камера заблокована. Відкрийте файл через HTTPS (наприклад, на CodePen).");
+                        typeWriter("[ OPTICS : ERROR ]", opticsBtn, 30, () => {
+                            isOpticsTransitioning = false;
+                        });
+                        return;
+                    }
+
+                    try {
+                        cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                            video: { facingMode: { ideal: "environment" } } 
+                        });
+                        videoEl.srcObject = cameraStream;
+                        videoEl.style.display = 'block';
+                        await videoEl.play(); 
+                        
+                        opticsBtn.style.color = "#00ff00"; 
+                        opticsBtn.style.borderColor = "#00ff00";
+                        typeWriter("[ OPTICS : ON ]", opticsBtn, 30, () => {
+                            isOpticsTransitioning = false;
+                        });
+                    } catch (err) {
+                        typeWriter("[ OPTICS : DENIED ]", opticsBtn, 30, () => {
+                            isOpticsTransitioning = false;
+                        });
+                    }
+                });
+            }
+        });
+
+        // КНОПКА ВИХОДУ
+        exitBtn.addEventListener('click', () => {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(()=>{});
+            } else if (document.webkitFullscreenElement) {
+                document.webkitExitFullscreen();
+            }
+            window.location.reload();
+        });
+
+        // СТАРТ СИСТЕМИ
+        startBtn.addEventListener('click', () => {
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else if (document.documentElement.webkitRequestFullscreen) {
+                document.documentElement.webkitRequestFullscreen();
+            }
+
+            // Запускаємо звук жорстко в момент тапу
+            initAndPlaySound();
+
+            startBtn.style.display = 'none';
+            contentDiv.style.display = 'block';
+            
+            opticsBtn.style.display = 'block';
+            exitBtn.style.display = 'block';
+            
+            typeWriter("[ OPTICS : OFF ]", opticsBtn, 40, () => {});
+
+            playSlide();
+        });
+    </script>
+</body>
+</html>
