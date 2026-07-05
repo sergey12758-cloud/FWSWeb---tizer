@@ -7,6 +7,10 @@
     <style>
         body { background-color: #000; color: #ff0000; font-family: 'Courier New', Courier, monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; height: 100vh; text-shadow: 0 0 5px #ff0000; }
         
+        /* Ефект миготливого курсору */
+        .cursor { display: inline-block; width: 10px; height: 20px; background-color: #ff0000; animation: blink 1s infinite; vertical-align: middle; margin-left: 5px; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
         #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; filter: grayscale(100%) sepia(100%) hue-rotate(300deg) saturate(1000%) brightness(0.5) contrast(1.5); display: none; }
         .noise-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E'); opacity: 0.2; z-index: 2; pointer-events: none; mix-blend-mode: multiply; }
         .scanline { width: 100%; height: 4px; background-color: rgba(255, 0, 0, 0.8); position: absolute; top: 0; left: 0; box-shadow: 0 0 15px rgba(255, 0, 0, 1); animation: scan 4s linear infinite; z-index: 10; pointer-events: none; }
@@ -34,7 +38,7 @@
     
     <div class="container" id="content" style="display: none;">
         <h1 id="title"></h1>
-        <p id="desc"></p>
+        <p id="desc"><span id="text-output"></span><span class="cursor"></span></p>
     </div>
 
     <script>
@@ -61,22 +65,33 @@
         const opticsBtn = document.getElementById('optics-toggle');
         const exitBtn = document.getElementById('exit-btn');
         const video = document.getElementById('camera-feed');
+        const titleEl = document.getElementById('title');
+        const descEl = document.getElementById('text-output');
 
-        function typeWriter(text, el, speed) {
+        function typeWriter(text, el, speed, callback) {
             el.innerHTML = '';
             let i = 0;
             function type() {
-                if (i < text.length) { el.innerHTML += text.charAt(i); i++; setTimeout(type, speed); }
+                if (i < text.length) { 
+                    el.innerHTML += text.charAt(i); 
+                    i++; 
+                    setTimeout(type, speed); 
+                } else if(callback) {
+                    callback();
+                }
             }
             type();
         }
 
         function playSlide() {
             if (currentSlide >= slides.length) currentSlide = 0;
-            typeWriter(slides[currentSlide].title, document.getElementById('title'), 40);
-            typeWriter(slides[currentSlide].desc, document.getElementById('desc'), 30);
-            currentSlide++;
-            setTimeout(playSlide, 5000);
+            
+            typeWriter(slides[currentSlide].title, titleEl, 40, () => {
+                typeWriter(slides[currentSlide].desc, descEl, 20, () => {
+                    currentSlide++;
+                    setTimeout(playSlide, 3000);
+                });
+            });
         }
 
         startBtn.addEventListener('click', () => {
@@ -88,28 +103,23 @@
             playSlide();
         });
 
-        // ЛОГІКА ОПТИКИ (ON/OFF + КОЛЬОРИ)
         opticsBtn.addEventListener('click', async () => {
             if (!isOpticsOn) {
-                // Увімкнення
                 try {
                     cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
                     video.srcObject = cameraStream;
                     video.style.display = 'block';
-                    
                     opticsBtn.innerText = "[ OPTICS : ON ]";
-                    opticsBtn.style.borderColor = "#00ff00"; // Зелений
+                    opticsBtn.style.borderColor = "#00ff00";
                     opticsBtn.style.color = "#00ff00";
                     isOpticsOn = true;
                 } catch(e) { alert("Камера недоступна"); }
             } else {
-                // Вимкнення
                 if (cameraStream) {
                     cameraStream.getTracks().forEach(track => track.stop());
                     video.style.display = 'none';
-                    
                     opticsBtn.innerText = "[ OPTICS : OFF ]";
-                    opticsBtn.style.borderColor = "#ff0000"; // Червоний
+                    opticsBtn.style.borderColor = "#ff0000";
                     opticsBtn.style.color = "#ff0000";
                     isOpticsOn = false;
                 }
