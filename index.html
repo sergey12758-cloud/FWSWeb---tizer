@@ -2,42 +2,94 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>FWSWeb Tactical HUD</title>
     <style>
-        body { background: #000; color: #f00; font-family: monospace; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #start-btn { padding: 20px 40px; border: 1px solid #f00; background: #000; color: #f00; cursor: pointer; font-size: 1.2rem; }
+        body { background-color: #000; color: #ff0000; font-family: 'Courier New', Courier, monospace; margin: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: center; height: 100vh; text-shadow: 0 0 5px #ff0000; }
+        #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; filter: grayscale(100%) sepia(100%) hue-rotate(300deg) saturate(1000%) brightness(0.5) contrast(1.5); display: none; }
+        .noise-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E'); opacity: 0.2; z-index: 2; pointer-events: none; mix-blend-mode: multiply; }
+        .scanline { width: 100%; height: 4px; background-color: rgba(255, 0, 0, 0.8); position: absolute; top: 0; left: 0; box-shadow: 0 0 15px rgba(255, 0, 0, 1); animation: scan 4s linear infinite; z-index: 10; pointer-events: none; }
+        @keyframes scan { 0% { top: -10%; } 100% { top: 110%; } }
+        #optics-toggle { position: absolute; top: 20px; right: 20px; padding: 10px 15px; border: 1px solid #ff0000; background: rgba(0, 0, 0, 0.7); color: #ff0000; font-weight: bold; cursor: pointer; z-index: 50; display: none; text-transform: uppercase; }
+        #exit-btn { position: absolute; bottom: 20px; left: 20px; padding: 5px 10px; border: 1px solid #ff0000; background: rgba(0, 0, 0, 0.7); color: #ff0000; font-weight: bold; cursor: pointer; z-index: 50; display: none; text-transform: uppercase; }
+        .container { padding: 25px; z-index: 20; position: relative; background: rgba(0, 0, 0, 0.8); border: 2px solid rgba(255, 0, 0, 0.5); margin: 20px; min-height: 180px; }
+        #start-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px 40px; font-size: 20px; background-color: #000; color: #ff0000; border: 2px solid #ff0000; cursor: pointer; z-index: 100; font-weight: bold; }
     </style>
 </head>
 <body>
-
     <button id="start-btn">[ INITIATE FWS_WEB ]</button>
-    <div id="content" style="display:none; text-align:center;">
-        <h1>SYSTEM ACTIVE</h1>
-        <button id="exit-btn">[ EXIT ]</button>
+    <button id="exit-btn" style="display:none;">[ EXIT ]</button>
+    <button id="optics-toggle" style="display:none;">[ OPTICS : OFF ]</button>
+
+    <video id="camera-feed" autoplay playsinline muted></video>
+    <div class="noise-overlay"></div>
+    <div class="scanline"></div>
+    
+    <div class="container" id="content" style="display: none;">
+        <h1 id="title"></h1>
+        <p id="desc"></p>
     </div>
 
     <script>
-        // Створюємо аудіо об'єкт. Жодних інших звукових функцій тут немає.
-        const audio = new Audio('Objective_Scan.mp3');
-        audio.loop = true;
+        const slides = [
+            { title: "FWSWEB PROJECT", desc: "Геоінформаційна система для управління пожежним водопостачанням." },
+            { title: "CORE ARCHITECTURE", desc: "Laravel Backend / FastAPI AI / PostgreSQL PostGIS / Leaflet.js." },
+            { title: "PHP COMPATIBILITY", desc: "Підтримка legacy-середовищ PHP 5.6 із повною сумісністю для PHP 8.1+." },
+            { title: "DATABASE STRUCTURE", desc: "База fwsWeb_db. Об'єднана таблиця історії (Status, Repair, Use)." },
+            { title: "DATA STANDARDS", desc: "Базовий стан поля Real_Functional за замовчуванням: 'Невідомо'." },
+            { title: "AI WATCHDOG", desc: "Автоматичне виявлення аномалій та перевірка цілісності даних у БД." },
+            { title: "KARMA ENGINE", desc: "Модель довіри: вага правок базується на репутації користувача." },
+            { title: "ACCESS LEVELS", desc: "Чіткий розподіл ролей: SuperAdmin, Admin, Operator та User." },
+            { title: "TACTICAL AR", desc: "AR-інтерфейс: пошук Об'єктів ППВ крізь перешкоди з низькою затримкою." },
+            { title: "OPEN SOURCE", desc: "Відкрита ліцензія з обов'язковою взаємністю для похідних розробок." },
+            { title: "ROADMAP", desc: "IoT-датчики тиску, Lidar-сканування та національна масштабованість." }
+        ];
 
+        // Чистий аудіо об'єкт
+        const music = new Audio('Objective_Scan.mp3');
+        music.loop = true;
+
+        let currentSlide = 0;
         const startBtn = document.getElementById('start-btn');
+        const contentDiv = document.getElementById('content');
+        const opticsBtn = document.getElementById('optics-toggle');
         const exitBtn = document.getElementById('exit-btn');
-        const content = document.getElementById('content');
+        
+        function typeWriter(text, el, speed) {
+            el.innerHTML = '';
+            let i = 0;
+            function type() {
+                if (i < text.length) { el.innerHTML += text.charAt(i); i++; setTimeout(type, speed); }
+            }
+            type();
+        }
+
+        function playSlide() {
+            if (currentSlide >= slides.length) currentSlide = 0;
+            typeWriter(slides[currentSlide].title, document.getElementById('title'), 40);
+            typeWriter(slides[currentSlide].desc, document.getElementById('desc'), 30);
+            currentSlide++;
+            setTimeout(playSlide, 5000);
+        }
 
         startBtn.addEventListener('click', () => {
-            // Браузер дозволить грати звук ТІЛЬКИ після цього натискання
-            audio.play().catch(e => console.error("Звук заблоковано браузером:", e));
-            
+            music.play().catch(e => console.log("Браузер блокує звук"));
             startBtn.style.display = 'none';
-            content.style.display = 'block';
+            contentDiv.style.display = 'block';
+            opticsBtn.style.display = 'block';
+            exitBtn.style.display = 'block';
+            playSlide();
         });
 
-        exitBtn.addEventListener('click', () => {
-            audio.pause();
-            audio.currentTime = 0;
-            window.location.reload();
+        exitBtn.addEventListener('click', () => { window.location.reload(); });
+        
+        opticsBtn.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                document.getElementById('camera-feed').srcObject = stream;
+                document.getElementById('camera-feed').style.display = 'block';
+                opticsBtn.innerText = "[ OPTICS : ON ]";
+            } catch(e) { alert("Камера недоступна"); }
         });
     </script>
 </body>
